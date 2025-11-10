@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACCAMAT - Professional Financial Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .financial-card {
+            transition: all 0.3s ease;
+        }
+        .financial-card:hover {
+            transform: translateY(-2px);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app" class="min-h-screen">
+        <!-- App will load here -->
+    </div>
+
+    <script>
+        // ========== CONFIGURATION ==========
+        const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbxhl8bAxeIwthPfusIKRPmVTEefocP2J6duoqBJsQH6YOYXQH3y9-i042zlXBqQPAv14A/exec';
+
+        // ========== APPLICATION STATE ==========
+        let currentView = 'setup';
+        let currentCompany = null;
+        let statements = [];
+
+        // ========== CORE FUNCTIONS ==========
+        async function apiCall(action, data = {}) {
+            try {
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ action, ...data })
+                });
+
+                const result = await response.json();
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'Request failed');
+                }
+                
+                return result;
+            } catch (error) {
+                alert('Error: ' + error.message);
+                throw error;
+            }
+        }
+
+        function showNotification(message) {
+            alert('ACCAMAT: ' + message);
+        }
+
+        function formatCurrency(amount, currency = 'USD') {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: currency,
+                minimumFractionDigits: 2
+            }).format(amount || 0);
+        }
+
+        // ========== RENDER FUNCTIONS ==========
+        function renderApp() {
+            const app = document.getElementById('app');
+            
+            if (currentView === 'setup') {
+                app.innerHTML = `
+                    <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 fade-in">
+                        <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 financial-card">
+                            <div class="text-center mb-8">
+                                <i class="fas fa-calculator text-6xl text-blue-600 mb-4"></i>
+                                <h1 class="text-3xl font-bold text-gray-900 mb-2">ACCAMAT</h1>
+                                <p class="text-gray-600">Financial Statement Assistant</p>
+                                <p class="text-sm text-green-600 mt-2">🚀 Hosted on GitHub Pages</p>
+                            </div>
+
+                            <form onsubmit="handleCompanySetup(event)" class="space-y-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                                    <input type="text" id="companyName" required 
+                                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                                           placeholder="Enter company name">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Currency *</label>
+                                    <select id="companyCurrency" required
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                                        <option value="USD">US Dollar (USD)</option>
+                                        <option value="ZWL">Zimbabwean Dollar (ZWL)</option>
+                                        <option value="ZAR">South African Rand (ZAR)</option>
+                                        <option value="EUR">Euro (EUR)</option>
+                                    </select>
+                                </div>
+
+                                <button type="submit" 
+                                        class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 font-semibold transition">
+                                    <i class="fas fa-rocket mr-2"></i>Launch ACCAMAT
+                                </button>
+                            </form>
+
+                            <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <div class="flex items-center text-blue-800">
+                                    <i class="fas fa-globe mr-2"></i>
+                                    <span class="text-sm">Accessible worldwide via GitHub Pages</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (currentView === 'dashboard') {
+                const incomeStatements = statements.filter(s => s.type === 'income');
+                const balanceSheets = statements.filter(s => s.type === 'balance');
+                
+                app.innerHTML = `
+                    <div class="min-h-screen bg-gray-50 fade-in">
+                        <header class="bg-white shadow-sm border-b">
+                            <div class="max-w-7xl mx-auto px-4 py-4">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-calculator text-2xl text-blue-600 mr-3"></i>
+                                        <h1 class="text-xl font-bold text-gray-900">ACCAMAT - ${currentCompany.name}</h1>
+                                    </div>
+                                    <div class="flex space-x-4">
+                                        <button onclick="switchView('income')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+                                            Income Statement
+                                        </button>
+                                        <button onclick="switchView('balance')" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                                            Balance Sheet
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </header>
+
+                        <main class="max-w-7xl mx-auto py-6 px-4">
+                            <div class="bg-white rounded-xl shadow-sm p-6 mb-6 financial-card">
+                                <h2 class="text-2xl font-bold text-gray-900 mb-2">Welcome, ${currentCompany.name}</h2>
+                                <p class="text-gray-600">Currency: ${currentCompany.currency} • ${statements.length} Statements</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                <div class="bg-white p-6 rounded-xl shadow-sm financial-card">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-chart-line text-2xl text-green-500 mr-4"></i>
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-600">Income Statements</p>
+                                            <p class="text-2xl font-semibold text-gray-900">${incomeStatements.length}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-white p-6 rounded-xl shadow-sm financial-card">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-balance-scale text-2xl text-blue-500 mr-4"></i>
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-600">Balance Sheets</p>
+                                            <p class="text-2xl font-semibold text-gray-900">${balanceSheets.length}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-white p-6 rounded-xl shadow-sm financial-card">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-money-bill-wave text-2xl text-purple-500 mr-4"></i>
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-600">Currency</p>
+                                            <p class="text-lg font-semibold text-gray-900">${currentCompany.currency}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-sm p-6 financial-card">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Statements</h3>
+                                ${statements.length === 0 ? `
+                                    <div class="text-center py-8 text-gray-500">
+                                        <i class="fas fa-file-invoice text-4xl mb-4"></i>
+                                        <p class="text-lg mb-2">No statements yet</p>
+                                        <p class="text-sm">Create your first financial statement to get started</p>
+                                    </div>
+                                ` : `
+                                    <div class="space-y-3">
+                                        ${statements.slice(0, 5).map(statement => `
+                                            <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                                <div class="flex items-center">
+                                                    <i class="fas ${statement.type === 'income' ? 'fa-chart-line text-green-500' : 'fa-balance-scale text-blue-500'} text-lg mr-3"></i>
+                                                    <div>
+                                                        <p class="font-medium text-gray-900 capitalize">${statement.type} Statement</p>
+                                                        <p class="text-sm text-gray-500">${statement.period}</p>
+                                                    </div>
+                                                </div>
+                                                <div class="text-right">
+                                                    <p class="font-semibold ${statement.type === 'income' ? (statement.netIncome >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-900'}">
+                                                        ${statement.type === 'income' ? 
+                                                            formatCurrency(statement.netIncome, currentCompany.currency) : 
+                                                            formatCurrency(statement.assets?.total || 0, currentCompany.currency)}
+                                                    </p>
+                                                    <p class="text-sm text-gray-500 capitalize">
+                                                        ${statement.type === 'income' ? 'Net Income' : 'Total Assets'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `}
+                            </div>
+                        </main>
+                    </div>
+                `;
+            }
+        }
+
+        async function handleCompanySetup(event) {
+            event.preventDefault();
+            
+            const companyData = {
+                name: document.getElementById('companyName').value,
+                currency: document.getElementById('companyCurrency').value
+            };
+
+            try {
+                const result = await apiCall('createCompany', { companyData });
+                currentCompany = result.company;
+                showNotification('Company created successfully!');
+                switchView('dashboard');
+            } catch (error) {
+                console.error('Failed to create company:', error);
+            }
+        }
+
+        function switchView(view) {
+            currentView = view;
+            renderApp();
+            
+            if (view === 'dashboard' && currentCompany) {
+                loadStatements();
+            }
+        }
+
+        async function loadStatements() {
+            try {
+                const result = await apiCall('getStatements', { companyId: currentCompany.id });
+                statements = result.statements || [];
+                renderApp();
+            } catch (error) {
+                console.error('Failed to load statements:', error);
+            }
+        }
+
+        // Initialize the app
+        renderApp();
+        
+        // Test backend connection on startup
+        async function testBackend() {
+            try {
+                await apiCall('testConnection');
+                console.log('✅ Backend connection successful');
+            } catch (error) {
+                console.log('Backend connection failed:', error.message);
+            }
+        }
+        
+        testBackend();
+    </script>
+</body>
+</html>
